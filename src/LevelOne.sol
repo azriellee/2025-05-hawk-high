@@ -45,7 +45,7 @@ contract LevelOne is Initializable, UUPSUpgradeable {
     mapping(address => bool) public isTeacher;
     mapping(address => bool) public isStudent;
     mapping(address => uint256) public studentScore;
-    mapping(address => uint256) private reviewCount;
+    mapping(address => uint256) public reviewCount;
     mapping(address => uint256) private lastReviewTime;
     address[] listOfStudents;
     address[] listOfTeachers;
@@ -85,6 +85,7 @@ contract LevelOne is Initializable, UUPSUpgradeable {
     error HH__ZeroValue();
     error HH__HawkHighFeesNotPaid();
     error HH__NotAllowed();
+    error HH__NotEnoughReviews();
 
     ////////////////////////////////
     /////                      /////
@@ -241,6 +242,7 @@ contract LevelOne is Initializable, UUPSUpgradeable {
     }
 
     function expel(address _student) public onlyPrincipal {
+        // @audit-info: add a revert error for this?
         if (inSession == false) {
             revert();
         }
@@ -278,6 +280,9 @@ contract LevelOne is Initializable, UUPSUpgradeable {
         if (!isStudent[_student]) {
             revert HH__StudentDoesNotExist();
         }
+        // @audit-info: is this right? wouldnt this give students 5 reviews? also where is the count being updated?
+        // reviewCount is not being incremented anywhere, is it necessary tho? wouldnt limiting reviews using the block
+        // timestamp be sufficient?
         require(reviewCount[_student] < 5, "Student review count exceeded!!!");
         require(block.timestamp >= lastReviewTime[_student] + reviewTime, "Reviews can only be given once per week");
 
@@ -292,6 +297,12 @@ contract LevelOne is Initializable, UUPSUpgradeable {
         emit ReviewGiven(_student, review, studentScore[_student]);
     }
 
+    // @audit-info: bytes data is not being read, the graduate function in level 2 is not . but does it really matter
+    // since the graduate function does nothing too?
+    // This also doesnt implement all the necessary checks defined by the invariant:
+    // 1. all students must have gotten 4 reviews
+    // 2. any student below cutoff should not be upgraded
+    // 3. Upgrade only take place when sessionEnd reached
     function graduateAndUpgrade(address _levelTwo, bytes memory) public onlyPrincipal {
         if (_levelTwo == address(0)) {
             revert HH__ZeroAddress();
@@ -311,5 +322,6 @@ contract LevelOne is Initializable, UUPSUpgradeable {
         usdc.safeTransfer(principal, principalPay);
     }
 
+    // @audit-info: this protects the contract from being upgraded by anyone
     function _authorizeUpgrade(address newImplementation) internal override onlyPrincipal {}
 }
